@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebRTC Video Chat</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f2f2f2;
+      font-family: Arial, sans-serif;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    .video-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    video {
+      max-width: 100%;
+      max-height: 100%;
+      margin: 0 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .form {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      margin-right: 10px;
+      border-radius: 5px;
+      border: none;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    button {
+      padding: 10px 20px;
+      border-radius: 5px;
+      border: none;
+      background: #4CAF50;
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #3E8E41;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>WebRTC Video Chat</h1>
+    <div class="video-container">
+      <video id="localVideo" autoplay playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+    <form class="form">
+      <input type="text" id="roomName" placeholder="Enter room name">
+      <button type="button" id="joinButton">Join Room</button>
+    </form>
+  </div>
+
+  <script>
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const roomNameInput = document.getElementById('roomName');
+    const joinButton = document.getElementById('joinButton');
+
+    // Create a new WebRTC peer connection
+    const peerConnection = new RTCPeerConnection();
+
+    // Add the local video stream to the peer connection
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+        localVideo.srcObject = stream;
+      })
+      .catch(error => console.error('Error accessing media devices:', error));
+
+    // When the join button is clicked, create or join the specified room
+    joinButton.addEventListener('click', async () => {
+      const roomName = roomNameInput.value;
+      if (!roomName) return;
+
+      // Create a new socket.io connection to the signaling server
+      const socket = io();
+
+      // Send a 'join' message to the server with the room name
+      socket.emit('join', roomName);
+
+      // When the server sends a 'ready' message, create an offer to start the call
+      socket.on('ready', async () => {
+      // offer to send to the other peer
+const offer = await peerConnection.createOffer();
+await peerConnection.setLocalDescription(offer);
+    // Send the offer to the other peer via the signaling server
+    socket.emit('offer', offer);
+  });
+
+  // When the server sends an 'offer' message, set the remote description and create an answer
+  socket.on('offer', async offer => {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+    // Create an answer to send back to the other peer
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    // Send the answer back to the other peer via the signaling server
+    socket.emit('answer', answer);
+  });
+
+  // When the server sends an 'answer' message, set the remote description
+  socket.on('answer', async answer => {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+  });
+
+  // When the peer connection receives a new stream, add it to the remote video element
+  peerConnection.addEventListener('track', event => {
+    if (event.track.kind === 'video') {
+      remoteVideo.srcObject = event.streams[0];
+    }
+  });
+});
+  </script>
+  <!-- Include the socket.io client library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
+</body>
+</html>
